@@ -5,7 +5,6 @@ import time
 import datetime
 import random
 import mysql.connector as mariadb
-import numpy as np
 
 # Pines
 GPIO.setmode(GPIO.BCM)
@@ -38,10 +37,8 @@ user = 'camion'
 password = 'embebidos'
 database = 'basuras'
 port = 3306
-print("Conectando a base de datos...")
-mariadb_conexion = mariadb.connect(host=host,port=port,user=user,password=password,database=database)
-cursor = mariadb_conexion.cursor()
-print("Conectado a MariaDB")
+
+
 #Func para sensores humedad y temperatura.
 def read_dht11_dat():
 	GPIO.setup(DHTPIN, GPIO.OUT)
@@ -101,6 +98,7 @@ def read_dht11_dat():
 			else:
 				continue
 	if len(lengths) != 40:
+		print("...")
 		return False
 
 	shortest_pull_up = min(lengths)
@@ -115,6 +113,7 @@ def read_dht11_dat():
 		if length > halfway:
 			bit = 1
 		bits.append(bit)
+	print("bits: %s, length: %d" % (bits, len(bits)))
 	for i in range(0, len(bits)):
 		byte = byte << 1
 		if (bits[i]):
@@ -124,120 +123,74 @@ def read_dht11_dat():
 		if ((i + 1) % 8 == 0):
 			the_bytes.append(byte)
 			byte = 0
+	print(the_bytes)
 	checksum = (the_bytes[0] + the_bytes[1] + the_bytes[2] + the_bytes[3]) & 0xFF
 	if the_bytes[4] != checksum:
-		return(False)
+		print("...")
+		return False
 
-	return(the_bytes[0], the_bytes[2])
+	return the_bytes[0], the_bytes[2]
 
-#Func para extraer rutas:
-def datosRutas():
-    rutasBdd = cursor.fetchall()
-    arrayRutas = np.array([['id_ruta',
-			    'IdVehiculo',
-			    'tiempo_estimado',
-			    'contenedores',
-			    'progreso']])
-    for datos in rutasBdd:
-	idRuta = datos[0]
-	IdVehiculo = datos[1]
-	tiempoEstimado = datos[2]
-	contenedores = datos[3]
-	progreso = datos[4]
-	arrayRutas = np.append(arrayRutas, [[IdVehiculo,
-					     idRuta,
-					     tiempoEstimado,
- 					     contenedores,
-					     progreso]],
-					     axis=0)
-    arrayRutas = np.delete(arrayRutas, 0, axis=0)
-    return(arrayRutas)
-
-#Ruta del vehiculo:
-def asignacionRuta(n):
-    for number in range(len(rutas)):
-	IdVehiculo = int(rutas[number][0])
-	if IdVehiculo == n:
-	    return(rutas[number])
+#Base de datos.
+mariabd_conexion = mariadb.connect(host, 
+				   port, 
+				   user, password, database)
 
 #Medicion.
-print("Iniciando toma de datos de sensores...")
 try:
-    #Conectando a mqtt.
     Vehiculo.connect(broker_address)
     Vehiculo.subscribe(topic_vehiculo)
-    #IdVehiculo.
-    n  = 10001
-    #OnOff.
+    n  = 10000
     tiempoEncendido = random.randint(0,10)
     vehiculoApagado = 0
-    #Se toman los valores de la bdd.
-    cursor.execute("SELECT id_ruta, IdVehiculo, tiempo_estimado, contenedores, progreso  FROM rutas")
-    rutas = datosRutas()
-    print(rutas)
-    #Inicia medicion.
+    fecha = datetime.date.today()
+    hora = datetime.datetime.now().strftime("%H:%M:%S")
+    print(hora)
+#Base de datos.
+    mariabd_conexion = mariadb.connect(host, port, user, password, database)
     while True:
         result = read_dht11_dat()
         if result:
-	    if n > 10030:
-                n=10001
-	    estadoVehiculo = 1
-	    ruta = asignacionRuta(n)
-	    print(ruta, n)
-	    if ruta is None:
-		print("Vehiculo "+str(n)+" sin ruta asignada")
-		n+=1
-		continue
-	    #Verificacion del estado del vehiculo.
+	    n+=1
 	    if n == vehiculoApagado:
-		print("ID apagado: " + str(n))
-		n+=1
 		continue
-	    #Medicion de fuego y gas.
-	    if GPIO.input(18):
-                    print("Gas:1")
-                    gas = 1
-            else:
-                    gas = 0
-            if GPIO.input(23):
-                    print("Fuego:1")
-                    fuego = 1
-            else:
-                    fuego = 0
-	    #Vehiculo que se apagara.
-            if tiempoEncendido == 30:
-                vehiculoApagado = n
-                estadoVehiculo = 0
-                tiempoEncendido = 0
-	    #Medicion y organizacion de los datos. Humedad y Temperatura.
+		print("IdApagado: "+n)
+	    estadoVehiculo = 1
 	    humidity, temperature = result
 	    Humidity = " Humedad: "+str(humidity)+","
             Temperature = " Temperatura: "+str(temperature)+","
-	    #Peso.
 	    peso =  random.randint(15000, 18000)
-	    Peso = " Peso(kg): "+ str(peso)+","
-	    #IdVehiculo.
 	    VehiculoNum = "IdVehiculo: "+str(n)+","
-	    #Fecha y hora de medicion.
+	    Peso = " Peso(kg): "+ str(peso)+","
 	    fecha = datetime.date.today()
 	    hora = datetime.datetime.now().strftime("%H:%M:%S")
 	    Hora = " Hora: "+ str(hora)+","
 	    Fecha = " Fecha: "+ str(fecha)+","
-	    #Gas-Fuego.
+	    if GPIO.input(18):
+               	    print("Gas:1")
+		    gas = 1
+	    else:
+		    gas = 0
+       	    if GPIO.input(23):
+           	    print("Fuego:1")
+		    fuego = 1
+	    else:
+		    fuego = 0
+	    if tiempoEncendido == 30:
+		vehiculoApagado = n
+		estadoVehiculo = 0
+		tiempoEncendido = 0
 	    Gas = " Gas: "+str(gas)+","
 	    Fuego = " Fuego: "+str(fuego)+","
-	    #Vehiculo OnOff.
 	    EstadoVehiculo = " Encendido: "+str(estadoVehiculo)
 	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature + Gas + Fuego + EstadoVehiculo + "}"
 	    print(vehiculo)
-	    #Publicacion de datos por mqtt.
 	    vehiculoPublish = "{"+str(n)+", "+str(fecha)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(estadoVehiculo)+"}"
 	    Vehiculo.publish(topic_vehiculo, vehiculoPublish)
-	    #Limite de Vehiculos.
-	    print("Esperando datos del siguiente vehiculo...")
+	    if n > 10029:
+		n=10000
 	    time.sleep(20)
 	    tiempoEncendido += 1
-	    n+=1
 
 
 # Cierre con except
