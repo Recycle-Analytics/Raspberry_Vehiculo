@@ -135,20 +135,14 @@ def datosRutas():
     rutasBdd = cursor.fetchall()
     arrayRutas = np.array([['id_ruta',
 			    'IdVehiculo',
-			    'tiempo_estimado',
-			    'contenedores',
-			    'progreso']])
+			    'contenedores']])
     for datos in rutasBdd:
 	idRuta = datos[0]
 	IdVehiculo = datos[1]
-	tiempoEstimado = datos[2]
-	contenedores = datos[3]
-	progreso = datos[4]
+	contenedores = datos[2]
 	arrayRutas = np.append(arrayRutas, [[IdVehiculo,
 					     idRuta,
-					     tiempoEstimado,
- 					     contenedores,
-					     progreso]],
+ 					     contenedores]],
 					     axis=0)
     arrayRutas = np.delete(arrayRutas, 0, axis=0)
     return(arrayRutas)
@@ -172,7 +166,7 @@ try:
     tiempoEncendido = random.randint(0,10)
     vehiculoApagado = 0
     #Se toman los valores de la bdd.
-    cursor.execute("SELECT id_ruta, IdVehiculo, tiempo_estimado, contenedores, progreso  FROM rutas")
+    cursor.execute("SELECT id_ruta, IdVehiculo, contenedores  FROM rutas")
     rutas = datosRutas()
     print(rutas)
     #Inicia medicion.
