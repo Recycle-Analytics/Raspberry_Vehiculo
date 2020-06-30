@@ -26,12 +26,8 @@ STATE_DATA_PULL_DOWN = 5
 # Declaracion para mqtt.
 broker_address = "aulal.org"
 topic_vehiculo = "/vehiculo"
-topic_bdd = "/vehiculo/bdd"
-topic_fpga = "/vehiculo/fpga"
-topic_progreso = "/vehiculo/progreso"
 puerto = 1883
 Vehiculo = mqtt.Client()
-#GPIO.
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(Pin_gas, GPIO.IN)
 GPIO.setup(Pin_fuego, GPIO.IN)
@@ -158,29 +154,23 @@ def asignacionRuta(n):
 	if IdVehiculo == n:
 	    return(rutas[number])
 
-#Progreso de la ruta.
-def progresoRuta(contenedores, siguienteContenedor):
-    rutaContenedores = np.array(contenedores.split(','))
-    posicionContenedor = int(np.where(rutaContenedores == siguienteContenedor)[0][0])
-    progresoRutaContenedores = (100*posicionContenedor)/rutaContenedores.size
+def progresoRuta(contenedores, siguenteContenedor):
+    rutaContedores = np.array(contenedores)
+    PosicionContenedor = np.where(siguienteContenedor)
+    progresoRutaContenedores = 100*(PosicionContenedor/len(contenedores))+
     return(progresoRutaContenedores)
 
-#Selector de contenedor siguiente.
-def seleccionContenedorSiguiente(contenedores, progreso, valorRuta):
-    rutaContenedores = np.array(contenedores.split(','))
-    if valorRuta:
-        numeroContenedor = int(np.floor((progreso*(rutaContenedores.size))/100))
+def seleccionContenedorProgreso(contenedores, progreso)
+    if progreso == 0:
+	return(contenedores[0])
     else:
-	numeroContenedor = random.randrange(rutaContenedores.size-1)
-    return(rutaContenedores[numeroContenedor])
-
+	
 #Medicion.
+print("Iniciando toma de datos de sensores...")
 try:
     #Conectando a mqtt.
-    print("Conectando a mqtt...")
     Vehiculo.connect(broker_address)
     Vehiculo.subscribe(topic_vehiculo)
-    print("Conectado a Aulal.org")
     #IdVehiculo.
     n  = 10001
     #OnOff.
@@ -190,26 +180,21 @@ try:
     cursor.execute("SELECT id_ruta, IdVehiculo, contenedores  FROM rutas")
     rutas = datosRutas()
     print(rutas)
-    #progresoVehiculo.
-    progreso = 0
     #Inicia medicion.
-    print("Iniciando toma de datos de sensores...\n\n")
     while True:
         result = read_dht11_dat()
-	valorRuta = random.randint(0,1)
         if result:
 	    if n > 10030:
                 n=10001
 	    estadoVehiculo = 1
 	    ruta = asignacionRuta(n)
+	    print(ruta, n)
 	    if ruta is None:
-		print("Vehiculo "+str(n)+" sin ruta asignada\n")
+		print("Vehiculo "+str(n)+" sin ruta asignada")
 		n+=1
 		continue
-	    idRuta = ruta[1]
 	    #progreso de la ruta.
-	    proximoContenedor = seleccionContenedorSiguiente(ruta[2], progreso, valorRuta)
-	    progreso = progresoRuta(ruta[2], proximoContenedor)
+	    progreso = progresoRuta(ruta[2])
 	    #Verificacion del estado del vehiculo.
 	    if n == vehiculoApagado:
 		print("ID apagado: " + str(n))
@@ -235,10 +220,6 @@ try:
 	    humidity, temperature = result
 	    Humidity = " Humedad: "+str(humidity)+","
             Temperature = " Temperatura: "+str(temperature)+","
-	    #Progreso y siguiente contenedor.
-            ProximoContenedor = " SigContenedor: "+str(proximoContenedor)+","
-            Progreso = " Progreso: "+str(progreso)
-	    Ruta = "Ruta: "+str(idRuta)
 	    #Peso.
 	    peso =  random.randint(15000, 18000)
 	    Peso = " Peso(kg): "+ str(peso)+","
@@ -254,23 +235,13 @@ try:
 	    Fuego = " Fuego: "+str(fuego)+","
 	    #Vehiculo OnOff.
 	    EstadoVehiculo = " Encendido: "+str(estadoVehiculo)
-	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuego+EstadoVehiculo+"}"
-	    vehiculoProgreso = "{"+VehiculoNum + Progreso+"}"
-	    vehiculoFpga = "{"+VehiculoNum+Hora+Peso+Humidity+Temperature+Gas+Fuego+Ruta+ProximoContenedor+Progreso+"}"
+	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature + Gas + Fuego + EstadoVehiculo + "}"
 	    print(vehiculo)
-	    print(vehiculoProgreso)
-	    print(vehiculoFpga)
-	    #Publicacion de datos por mqtt a /vehiculo/bdd.
+	    #Publicacion de datos por mqtt.
 	    vehiculoPublish = "{"+str(n)+", "+str(fecha)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(estadoVehiculo)+"}"
-	    progresoPublish = "{"+str(n)+", "+str(progreso)+"}"
-	    fpgaPublish = "{"+str(n)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(idRuta)+", "+str(proximoContenedor)+", "+str(progreso)+"}"
-	    Vehiculo.publish(topic_bdd, vehiculoPublish)
-	    Vehiculo.publish(topic_progreso, progresoPublish)
-	    Vehiculo.publish(topic_fpga, fpgaPublish)
-	    #Publicacion de datos por mqtt a /vehiculo/progreso.
-	    vehiculoFpgaPublish = "{"+str(n)+", "
+	    Vehiculo.publish(topic_vehiculo, vehiculoPublish)
 	    #Limite de Vehiculos.
-	    print("Esperando datos del siguiente vehiculo...\n")
+	    print("Esperando datos del siguiente vehiculo...")
 	    time.sleep(20)
 	    tiempoEncendido += 1
 	    n+=1
