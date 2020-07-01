@@ -276,6 +276,11 @@ try:
                 vehiculoApagado = n
                 estadoVehiculo = 0
                 tiempoEncendido = 0
+	    #Restriccion progreso.
+	    if progreso >= 100:
+		progreso = 99
+	    elif progreso < 10:
+		progreso = 10
 	    #Medicion y organizacion de los datos. Humedad y Temperatura.
 	    humidity, temperature = result
 	    Humidity = " Humedad: "+str(humidity)+","
@@ -320,7 +325,7 @@ try:
 	    vehiculoFpgaPublish = "{"+str(n)+", "
 	    #Limite de Vehiculos.
 	    print("Esperando datos del siguiente vehiculo...\n")
-	    time.sleep(1)
+	    time.sleep(3)
 	    tiempoEncendido += 1
 	    n+=1
 
