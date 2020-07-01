@@ -8,7 +8,6 @@ import mysql.connector as mariadb
 import numpy as np
 
 # Pines.
-GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 Pin_gas = 18
 Pin_fuego = 23
@@ -144,20 +143,11 @@ def read_dht11_dat():
 
 	return(the_bytes[0], the_bytes[2])
 
-#Medicion distancia.
-def distance():
-    GPIO.output(GPIO_TRIGGER, True)
-    time.sleep(0.00001)
-    GPIO.output(GPIO_TRIGGER, False)
-    StartTime = time.time()
-    StopTime = time.time()
-    while GPIO.input(GPIO_ECHO) == 0:
-	StartTime = time.time()
-    while GPIO.input(GPIO_ECHO) == 1:
-	StopTime = time.time()
-    TimeElapsed = StopTime - StartTime
-    distance = (TimeElapsed * 34300)/2
-    return(distance)
+def distance(): 
+# set Trigger to HIGH 
+GPIO.output(GPIO_TRIGGER, True) 
+# set Trigger after 0.01ms to LOW time.sleep(0.00001) GPIO.output(GPIO_TRIGGER, False) StartTime = time.time() StopTime = time.time() # save StartTime while GPIO.input(GPIO_ECHO) == 0: StartTime = time.time() # save time of arrival while GPIO.input(GPIO_ECHO) == 1: StopTime = time.time() # time difference between start and arrival TimeElapsed = StopTime - StartTime # multiply with the sonic speed (34300 cm/s) # and divide by 2, because there and back distance = (TimeElapsed * 34300) / 2 return distance
+
 
 #Func para extraer rutas:
 def datosRutas():
@@ -237,14 +227,6 @@ try:
 	    #progreso de la ruta.
 	    proximoContenedor = seleccionContenedorSiguiente(ruta[2], progreso, valorRuta)
 	    progreso = progresoRuta(ruta[2], proximoContenedor)
-	    #Volumen
-	    dist = int(distance())
-	    if dist >= 100:
-		volumen = 99
-	    elif dist <= 10:
-		volumen = 10
-	    else:
-		volumen = dist
 	    #Verificacion del estado del vehiculo.
 	    if n == vehiculoApagado:
 		print("ID apagado: " + str(n))
@@ -287,8 +269,6 @@ try:
 	    #Peso.
 	    peso =  random.randint(15000, 18000)
 	    Peso = " Peso(kg): "+ str(peso)+","
-	    #Volumen.
-	    Volumen = " Volumen: "+str(volumen)+","
 	    #Descarga.
 	    Descarga = " Descarga: "+ str(descarga)+","
 	    #IdVehiculo.
@@ -303,29 +283,128 @@ try:
 	    Fuego = " Fuego: "+str(fuego)+","
 	    #Vehiculo OnOff.
 	    EstadoVehiculo = " Encendido: "+str(estadoVehiculo)
-	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuego+Descarga+Volumen+EstadoVehiculo+"}"
-	    vehiculoProgreso = "{"+VehiculoNum + Progreso+"}"
-	    vehiculoFpga = "{"+EstadoVehiculo+", "+VehiculoNum+Hora+Peso+Humidity+Temperature+Gas+Fuego+Ruta+ProximoContenedor+Progreso+"}"
-	    print(vehiculo)
-	    print(vehiculoProgreso)
-	    print(vehiculoFpga)
-	    #Publicacion de datos por mqtt a /vehiculo/bdd.
-	    vehiculoPublish = "{"+str(n)+", "+str(fecha)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(descarga)+", "+str(volumen)+", "+str(estadoVehiculo)+"}"
-	    progresoPublish = "{"+str(n)+", "+str(progreso)+"}"
-	    fpgaPublish = "{"+str(estadoVehiculo)+", "+str(n)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(idRuta)+", "+str(proximoContenedor)+", "+str(progreso)+"}"
-	    Vehiculo.publish(topic_bdd, vehiculoPublish)
-	    Vehiculo.publish(topic_progreso, progresoPublish)
-	    Vehiculo.publish(topic_fpga, fpgaPublish)
-	    #Publicacion de datos por mqtt a /vehiculo/progreso.
-	    vehiculoFpgaPublish = "{"+str(n)+", "
-	    #Limite de Vehiculos.
-	    print("Esperando datos del siguiente vehiculo...\n")
-	    time.sleep(1)
-	    tiempoEncendido += 1
-	    n+=1
+	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuegohiculo,
+					     idRuta,
+ 					     contenedores]],
+					     axis=0)
+    arrayRutas = np.delete(arrayRutas, 0, axis=0)
+    return(arrayRutas)
 
+#Ruta del vehiculo:
+def asignacionRuta(n):
+    for number in range(len(rutas)):
+	IdVehiculo = int(rutas[number][0])
+	if IdVehiculo == n:
+	    return(rutas[number])
 
-# Cierre con except
-except KeyboardInterrupt:
-    print("ERROR")
-    GPIO.cleanup()
+#Progreso de la ruta.
+def progresoRuta(contenedores, siguienteContenedor):
+    rutaContenedores = np.array(contenedores.split(','))
+    posicionContenedor = int(np.where(rutaContenedores == siguienteContenedor)[0][0])
+    progresoRutaContenedores = (100*posicionContenedor)/rutaContenedores.size
+    return(progresoRutaContenedores)
+
+#Selector de contenedor siguiente.
+def seleccionContenedorSiguiente(contenedores, progreso, valorRuta):
+    rutaContenedores = np.array(contenedores.split(','))
+    if valorRuta:
+        numeroContenedor = int(np.floor((progreso*(rutaContenedores.size))/100))
+    else:
+	numeroContenedor = random.randrange(rutaContenedores.size-1)
+    return(rutaContenedores[numeroContenedor])
+
+#Medicion.
+try:
+    #Conectando a mqtt.
+    print("Conectando a mqtt...")
+    Vehiculo.connect(broker_address)
+    Vehiculo.subscribe(topic_vehiculo)
+    print("Conectado a Aulal.org.")
+    #IdVehiculo.
+    n  = 10001
+    #OnOff.
+    tiempoEncendido = random.randint(0,10)
+    vehiculoApagado = 0
+    descarga = 0
+    vehiculoDescarga = 0
+    #Se toman los valores de la bdd.
+    cursor.execute("SELECT id_ruta, IdVehiculo, contenedores  FROM rutas")
+    rutas = datosRutas()
+    print(rutas)
+    #progresoVehiculo.
+    progreso = 0
+    #Inicia medicion.
+    print("Iniciando toma de datos de sensores...\n\n")
+    while True:
+        result = read_dht11_dat()
+	valorRuta = random.randint(0,1)
+        if result:
+	    if n > 10030:
+                n=10001
+	    estadoVehiculo = 1
+	    ruta = asignacionRuta(n)
+	    if ruta is None:
+		print("Vehiculo "+str(n)+" sin ruta asignada.\n")
+		n+=1
+		continue
+	    idRuta = ruta[1]
+	    #progreso de la ruta.
+	    proximoContenedor = seleccionContenedorSiguiente(ruta[2], progreso, valorRuta)
+	    progreso = progresoRuta(ruta[2], proximoContenedor)
+	    #Verificacion del estado del vehiculo.
+	    if n == vehiculoApagado:
+		print("ID apagado: " + str(n))
+		n+=1
+		continue
+	    #Medicion de fuego y gas.
+	    if GPIO.input(Pin_gas):
+                    print("Gas:1")
+                    gas = 1
+            else:
+                    gas = 0
+            if GPIO.input(Pin_fuego):
+                    print("Fuego:1")
+                    fuego = 1
+            else:
+                    fuego = 0
+	    time.sleep(0.01)
+	    #Descarga del vehiculo.
+	    if vehiculoDescarga == 0 and descarga == 0:
+	    	if GPIO.input(Pin_descarga):
+		    descarga = 1
+		    vehiculoDescarga = n
+	    elif vehiculoDescarga == n:
+		    vehiculoDescarga = 0
+	    else:
+		    descarga = 0
+	    #Vehiculo que se apagara.
+            if tiempoEncendido == 30:
+                vehiculoApagado = n
+                estadoVehiculo = 0
+                tiempoEncendido = 0
+	    #Medicion y organizacion de los datos. Humedad y Temperatura.
+	    humidity, temperature = result
+	    Humidity = " Humedad: "+str(humidity)+","
+            Temperature = " Temperatura: "+str(temperature)+","
+	    #Progreso y siguiente contenedor.
+            ProximoContenedor = " SigContenedor: "+str(proximoContenedor)+","
+            Progreso = " Progreso: "+str(progreso)
+	    Ruta = " Ruta: "+str(idRuta)
+	    #Peso.
+	    peso =  random.randint(15000, 18000)
+	    Peso = " Peso(kg): "+ str(peso)+","
+	    #Descarga.
+	    Descarga = " Descarga: "+ str(descarga)+","
+	    #IdVehiculo.
+	    VehiculoNum = "IdVehiculo: "+str(n)+","
+	    #Fecha y hora de medicion.
+	    fecha = datetime.date.today()
+	    hora = datetime.datetime.now().strftime("%H:%M:%S")
+	    Hora = " Hora: "+ str(hora)+","
+	    Fecha = " Fecha: "+ str(fecha)+","
+	    #Gas-Fuego.
+	    Gas = " Gas: "+str(gas)+","
+	    Fuego = " Fuego: "+str(fuego)+","
+	    #Vehiculo OnOff.
+	    EstadoVehiculo = " Encendido: "+str(estadoVehiculo)
+	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuego
