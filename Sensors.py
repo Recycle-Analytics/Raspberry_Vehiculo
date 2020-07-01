@@ -7,14 +7,18 @@ import random
 import mysql.connector as mariadb
 import numpy as np
 
-# Pines
+# Pines.
+GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
 Pin_gas = 18
 Pin_fuego = 23
 Pin_HumeTemp = 17
 DHTPIN = Pin_HumeTemp
-#Humedad y temperatura, estado y contadores
+Pin_descarga = 19
+GPIO_TRIGGER = 20
+GPIO_ECHO = 21
 
+#Humedad y temperatura, estado y contadores.
 MAX_UNCHANGE_COUNT = 100
 
 STATE_INIT_PULL_DOWN = 1
@@ -35,7 +39,9 @@ Vehiculo = mqtt.Client()
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(Pin_gas, GPIO.IN)
 GPIO.setup(Pin_fuego, GPIO.IN)
-
+GPIO.setup(Pin_descarga, GPIO.IN)
+GPIO.setup(GPIO_TRIGGER, GPIO.OUT)
+GPIO.setup(GPIO_ECHO, GPIO.IN)
 #Conectar a base de datos.
 host = 'berserkit.duckdns.org'
 user = 'camion'
@@ -43,9 +49,13 @@ password = 'embebidos'
 database = 'basuras'
 port = 3306
 print("Conectando a base de datos...")
-mariadb_conexion = mariadb.connect(host=host,port=port,user=user,password=password,database=database)
-cursor = mariadb_conexion.cursor()
-print("Conectado a MariaDB")
+try:
+	mariadb_conexion = mariadb.connect(host=host,port=port,user=user,password=password,database=database)
+	cursor = mariadb_conexion.cursor()
+except:
+	print("No hay respuesta de la base de datos.")
+	exit()
+print("Conectado a MariaDB.")
 #Func para sensores humedad y temperatura.
 def read_dht11_dat():
 	GPIO.setup(DHTPIN, GPIO.OUT)
@@ -134,6 +144,20 @@ def read_dht11_dat():
 
 	return(the_bytes[0], the_bytes[2])
 
+def distance():
+    GPIO.output(GPIO_TRIGGER, True)
+    time.sleep(0.00001)
+    GPIO.output(GPIO_TRIGGER, False)
+    StartTime = time.time()
+    StopTime = time.time()
+    while GPIO.input(GPIO_ECHO) == 0:
+	StartTime = time.time()
+    while GPIO.input(GPIO_ECHO) == 1:
+	StopTime = time.time()
+    TimeElapsed = StopTime - StartTime
+    distance = (TimeElapsed * 34300)/2
+    return(distance)
+
 #Func para extraer rutas:
 def datosRutas():
     rutasBdd = cursor.fetchall()
@@ -180,12 +204,14 @@ try:
     print("Conectando a mqtt...")
     Vehiculo.connect(broker_address)
     Vehiculo.subscribe(topic_vehiculo)
-    print("Conectado a Aulal.org")
+    print("Conectado a Aulal.org.")
     #IdVehiculo.
     n  = 10001
     #OnOff.
     tiempoEncendido = random.randint(0,10)
     vehiculoApagado = 0
+    descarga = 0
+    vehiculoDescarga = 0
     #Se toman los valores de la bdd.
     cursor.execute("SELECT id_ruta, IdVehiculo, contenedores  FROM rutas")
     rutas = datosRutas()
@@ -203,29 +229,45 @@ try:
 	    estadoVehiculo = 1
 	    ruta = asignacionRuta(n)
 	    if ruta is None:
-		print("Vehiculo "+str(n)+" sin ruta asignada\n")
+		print("Vehiculo "+str(n)+" sin ruta asignada.\n")
 		n+=1
 		continue
 	    idRuta = ruta[1]
 	    #progreso de la ruta.
 	    proximoContenedor = seleccionContenedorSiguiente(ruta[2], progreso, valorRuta)
 	    progreso = progresoRuta(ruta[2], proximoContenedor)
+	    #Volumen
+	    dist = int(distance())
+	    if dist >= 100:
+		volumen = 100
+	    else:
+		volumen = dist
 	    #Verificacion del estado del vehiculo.
 	    if n == vehiculoApagado:
 		print("ID apagado: " + str(n))
 		n+=1
 		continue
 	    #Medicion de fuego y gas.
-	    if GPIO.input(18):
+	    if GPIO.input(Pin_gas):
                     print("Gas:1")
                     gas = 1
             else:
                     gas = 0
-            if GPIO.input(23):
+            if GPIO.input(Pin_fuego):
                     print("Fuego:1")
                     fuego = 1
             else:
                     fuego = 0
+	    time.sleep(0.01)
+	    #Descarga del vehiculo.
+	    if vehiculoDescarga == 0 and descarga == 0:
+	    	if GPIO.input(Pin_descarga):
+		    descarga = 1
+		    vehiculoDescarga = n
+	    elif vehiculoDescarga == n:
+		    vehiculoDescarga = 0
+	    else:
+		    descarga = 0
 	    #Vehiculo que se apagara.
             if tiempoEncendido == 30:
                 vehiculoApagado = n
@@ -238,10 +280,14 @@ try:
 	    #Progreso y siguiente contenedor.
             ProximoContenedor = " SigContenedor: "+str(proximoContenedor)+","
             Progreso = " Progreso: "+str(progreso)
-	    Ruta = "Ruta: "+str(idRuta)
+	    Ruta = " Ruta: "+str(idRuta)
 	    #Peso.
 	    peso =  random.randint(15000, 18000)
 	    Peso = " Peso(kg): "+ str(peso)+","
+	    #Volumen.
+	    Volumen = " Volumen: "+str(volumen)+","
+	    #Descarga.
+	    Descarga = " Descarga: "+ str(descarga)+","
 	    #IdVehiculo.
 	    VehiculoNum = "IdVehiculo: "+str(n)+","
 	    #Fecha y hora de medicion.
@@ -254,16 +300,16 @@ try:
 	    Fuego = " Fuego: "+str(fuego)+","
 	    #Vehiculo OnOff.
 	    EstadoVehiculo = " Encendido: "+str(estadoVehiculo)
-	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuego+EstadoVehiculo+"}"
+	    vehiculo = "{"+VehiculoNum+Fecha+Hora+Peso+Humidity+Temperature+Gas+Fuego+Descarga+Volumen+EstadoVehiculo+"}"
 	    vehiculoProgreso = "{"+VehiculoNum + Progreso+"}"
-	    vehiculoFpga = "{"+VehiculoNum+Hora+Peso+Humidity+Temperature+Gas+Fuego+Ruta+ProximoContenedor+Progreso+"}"
+	    vehiculoFpga = "{"+EstadoVehiculo+", "+VehiculoNum+Hora+Peso+Humidity+Temperature+Gas+Fuego+Ruta+ProximoContenedor+Progreso+"}"
 	    print(vehiculo)
 	    print(vehiculoProgreso)
 	    print(vehiculoFpga)
 	    #Publicacion de datos por mqtt a /vehiculo/bdd.
-	    vehiculoPublish = "{"+str(n)+", "+str(fecha)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(estadoVehiculo)+"}"
+	    vehiculoPublish = "{"+str(n)+", "+str(fecha)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(descarga)+", "+str(volumen)+", "+str(estadoVehiculo)+"}"
 	    progresoPublish = "{"+str(n)+", "+str(progreso)+"}"
-	    fpgaPublish = "{"+str(n)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(idRuta)+", "+str(proximoContenedor)+", "+str(progreso)+"}"
+	    fpgaPublish = "{"+str(estadoVehiculo)+", "+str(n)+", "+str(hora)+", "+str(peso)+", "+str(humidity)+", "+str(temperature)+", "+str(gas)+", "+str(fuego)+", "+str(idRuta)+", "+str(proximoContenedor)+", "+str(progreso)+"}"
 	    Vehiculo.publish(topic_bdd, vehiculoPublish)
 	    Vehiculo.publish(topic_progreso, progresoPublish)
 	    Vehiculo.publish(topic_fpga, fpgaPublish)
